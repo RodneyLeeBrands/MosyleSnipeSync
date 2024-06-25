@@ -7,9 +7,8 @@ import base64
 from colorama import Fore
 from colorama import Style
 
-
 class Snipe:
-    def __init__(self, snipetoken, url,manufacturer_id,macos_category_id,ios_category_id,tvos_category_id,rate_limit,macos_fieldset_id,ios_fieldset_id,tvos_fieldset_id,apple_image_check):
+    def __init__(self, snipetoken, url,manufacturer_id,macos_category_id,ios_category_id,tvos_category_id,rate_limit,macos_fieldset_id,ios_fieldset_id,tvos_fieldset_id,apple_image_check, apple_friendly_name_check, dry_run=False):
         self.url = url
         self._snipetoken = snipetoken
         self.manufacturer_id = manufacturer_id
@@ -22,6 +21,8 @@ class Snipe:
         self.ios_fieldset_id = ios_fieldset_id
         self.tvos_fieldset_id = tvos_fieldset_id
         self.apple_image_check = apple_image_check
+        self.apple_friendly_name_check = apple_friendly_name_check
+        self.dry_run = dry_run
 
     @property
     def headers(self):
@@ -52,6 +53,7 @@ class Snipe:
             print("the model was found")
 
             #does the model have a picture?
+            payload = None
             if jsonResult['rows'][0]['image'] is None:
                 print("the model does not have a picture. Let, set one")
                 #No, it does not. Let's update it.
@@ -63,7 +65,18 @@ class Snipe:
                     payload = {
                         "image": imageResponse
                     }
-                    self.updateModel(str(jsonResult['rows'][0]['id']), payload)
+            # Check the model name value
+            nameResponse = self.getFriendlyNameForModel(model);
+            if(nameResponse == False):
+                    print("loading the name details failed..")
+            else:
+                if nameResponse != jsonResult['rows'][0]['name']:
+                    print("the model name does not match. Let, set it")
+                    payload = {
+                        "name": nameResponse
+                    }
+            if payload is not None:
+                self.updateModel(str(jsonResult['rows'][0]['id']), payload)
 
 
             else:
@@ -78,12 +91,16 @@ class Snipe:
         if(imageResponse == False):
             imageResponse = None
 
+        nameResponse = getFriendlyNameForModel(model)
+        if(nameResponse == False):
+            nameResponse = model
+
         payload = {
-			"name": model,
+			"name": nameResponse,
             "category_id": self.macos_category_id,
             "manufacturer_id": self.manufacturer_id,
             "model_number": model,
-            "fieldset_id": self.mac_os_fieldset_id,
+            "fieldset_id": self.macos_fieldset_id,
             "image":imageResponse
         }
 
@@ -138,8 +155,13 @@ class Snipe:
         imageResponse = self.getImageForModel(model);
         if(imageResponse == False):
             imageResponse = None
+
+        nameResponse = getFriendlyNameForModel(model)
+        if(nameResponse == False):
+            nameResponse = model
+
         payload = {
-			"name": model,
+			"name": nameResponse,
             "category_id": self.ios_category_id,
             "manufacturer_id": self.manufacturer_id,
             "model_number": model,
@@ -152,8 +174,13 @@ class Snipe:
         imageResponse = self.getImageForModel(model);
         if(imageResponse == False):
             imageResponse = None
+        
+        nameResponse = getFriendlyNameForModel(model)
+        if(nameResponse == False):
+            nameResponse = model
+
         payload = {
-			"name": model,
+			"name": nameResponse,
             "category_id": self.tvos_category_id,
             "manufacturer_id": self.manufacturer_id,
             "model_number": model,
@@ -199,13 +226,13 @@ class Snipe:
         
         #macaddress stuff
         wifiMac = payload['wifi_mac_address']
-        eithernetMac = payload['ethernet_mac_address']
+        ethernetMac = payload['ethernet_mac_address']
         
         #default to eithernet mac, if not, fall back to wifi mac. If neither, leave blank
-        if(wifiMac != None and eithernetMac == None):
+        if(wifiMac != None and ethernetMac == None):
             finalPayload['_snipeit_mac_address_1'] = wifiMac
-        elif(eithernetMac != None):
-            finalPayload['_snipeit_mac_address_1'] = eithernetMac
+        elif(ethernetMac != None):
+            finalPayload['_snipeit_mac_address_1'] = ethernetMac
         
         return finalPayload
 
@@ -223,13 +250,22 @@ class Snipe:
             return requests.get(self.url + url, headers = self.headers, params = params)
         elif(type == "POST"):
             print('Sending POST request to snipeit', url)
-            return requests.post(self.url + url, headers = self.headers, json = json)
+            if not self.dry_run:
+                return requests.post(self.url + url, headers = self.headers, json = json)
+            else:
+                return requests.Response()
         elif(type == "PATCH"):
             print('Sending PATCH request to snipeit', url)
-            return requests.patch(self.url + url, headers = self.headers, json = json)
+            if not self.dry_run:
+                return requests.patch(self.url + url, headers = self.headers, json = json)
+            else:
+                return requests.Response()
         elif(type == "DELETE"):
             print('Sending DELETE request to snipeit', url)
-            return requests.delete(self.url + url, headers = self.headers)
+            if not self.dry_run:
+                return requests.delete(self.url + url, headers = self.headers)
+            else:
+                return requests.Response()
         else:
             print(Fore.RED+'Unknown request type'+Style.RESET_ALL)
             return None
@@ -252,6 +288,25 @@ class Snipe:
                 return False
         else:
             print("Image checking is disabled.")
+            return False
+        
+    def getFriendlyNameForModel(self, modelNumber):
+        if self.apple_friendly_name_check == True:
+
+            url = "https://appledb.dev/pageData/device/identifier/" + modelNumber + ".json"
+            print("Get data from URL", url)
+            try:
+                response = requests.get(url)
+                response.raise_for_status()
+                data = response.json()
+                return data['frontmatter']['title']
+            
+                
+            except requests.exceptions.HTTPError as err:
+                print(Fore.RED + "Error getting data from apple db", err, Style.RESET_ALL)
+                return False
+        else:
+            print("Name checking is disabled.")
             return False
         
 

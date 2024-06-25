@@ -4,15 +4,18 @@ import requests
 class Mosyle:
 	
 	# Create Mosyle instance
-	def __init__(self, key, url = "https://businessapi.mosyle.com/v1", user = "", password = ""):
+	def __init__(self, key, url = "https://businessapi.mosyle.com/v1", user = "", password = "", dry_run=False):
 		# Attribute the variable to the instance
 		self.url = url
 		self.request = requests.Session()
 		self.request.headers["accesstoken"] = key
-		#base64 encode username and password for basic auth
-		userpass = user + ':' + password
-		encoded_u = base64.b64encode(userpass.encode()).decode()
-		self.request.headers["Authorization"] = "Basic %s" % encoded_u
+		self.request.headers["content-type"] = "application/json"
+		loginResponse = self.request.post(self.url + "/login", json = {
+			"email" : user,
+			"password" : password
+		}).headers
+		self.request.headers["Authorization"] = loginResponse['Authorization']
+		self.dry_run = dry_run
 
 		
 	# Create variables requests
@@ -61,4 +64,5 @@ class Mosyle:
 			"serialnumber": serialnumber,
 			"asset_tag": tag
 		}
-		return self.request.post(self.url + "/devices", json = params )
+		if not self.dry_run:
+			return self.request.post(self.url + "/devices", json = params )

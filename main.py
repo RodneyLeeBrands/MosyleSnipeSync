@@ -1,10 +1,10 @@
 # Import all the things
 import json
 import datetime
-import configparser
 import colorama
 from sys import exit
 
+from config import get_config
 from mosyle import Mosyle
 from snipe import Snipe
 from colorama import Fore
@@ -13,37 +13,37 @@ from colorama import Style
 # Converts datetim/e to timestamp for Mosyle
 ts = datetime.datetime.now().timestamp() - 200
 
-# Set some Variables from the settings.conf:
-config = configparser.ConfigParser()
-config.read('settings.ini')
 
 # This is the address, cname, or FQDN for your snipe-it instance.
-snipe_url = config['snipe-it']['url']
-apiKey = config['snipe-it']['apiKey']
-defaultStatus = config['snipe-it']['defaultStatus']
-apple_manufacturer_id = config['snipe-it']['manufacturer_id']
-macos_category_id = config['snipe-it']['macos_category_id']
-ios_category_id =  config['snipe-it']['ios_category_id']
-tvos_category_id =  config['snipe-it']['tvos_category_id']
-macos_fieldset_id = config['snipe-it']['macos_fieldset_id']
-ios_fieldset_id = config['snipe-it']['ios_fieldset_id']
-tvos_fieldset_id = config['snipe-it']['tvos_fieldset_id']
-deviceTypes = config['mosyle']['deviceTypes'].split(',')
+snipe_url = get_config('snipe-it','url')
+apiKey = get_config('snipe-it','apiKey')
+defaultStatus = get_config('snipe-it','defaultStatus')
+apple_manufacturer_id = get_config('snipe-it','manufacturer_id')
+macos_category_id = get_config('snipe-it','macos_category_id')
+ios_category_id =  get_config('snipe-it','ios_category_id')
+tvos_category_id =  get_config('snipe-it','tvos_category_id')
+macos_fieldset_id = get_config('snipe-it','macos_fieldset_id')
+ios_fieldset_id = get_config('snipe-it','ios_fieldset_id')
+tvos_fieldset_id = get_config('snipe-it','tvos_fieldset_id')
+deviceTypes = get_config('mosyle','deviceTypes').split(',')
 
-snipe_rate_limit = int(config['snipe-it']['rate_limit'])
+snipe_rate_limit = int(get_config('snipe-it','rate_limit'))
 
-apple_image_check = config['snipe-it'].getboolean('apple_image_check')
+apple_image_check = get_config('snipe-it', 'apple_image_check', as_boolean=True)
+apple_friendly_name_check = get_config('snipe-it', 'apple_friendly_name_check', as_boolean=True)
+
+dry_run = get_config('snipe-it', 'dryrun', as_boolean=True)
 
 
 
 # Set the token for the Mosyle Api
-mosyle = Mosyle(config['mosyle']['token'], config['mosyle']['url'], config['mosyle']['user'], config['mosyle']['password'])
+mosyle = Mosyle(get_config('mosyle','token'), get_config('mosyle','url'), get_config('mosyle','user'), get_config('mosyle','password'), dry_run=dry_run)
 
 # Set the call type for Mosyle
-calltype = config['mosyle']['calltype']
+calltype = get_config('mosyle','calltype')
 
 #setup the snipe-it api
-snipe = Snipe(apiKey,snipe_url,apple_manufacturer_id,macos_category_id,ios_category_id,tvos_category_id,snipe_rate_limit, macos_fieldset_id, ios_fieldset_id, tvos_fieldset_id,apple_image_check)
+snipe = Snipe(apiKey,snipe_url,apple_manufacturer_id,macos_category_id,ios_category_id,tvos_category_id,snipe_rate_limit, macos_fieldset_id, ios_fieldset_id, tvos_fieldset_id,apple_image_check, apple_friendly_name_check, dry_run=dry_run)
 
 for deviceType in deviceTypes:
     # Get the list of devices from Mosyle based on the deviceType and call type
@@ -54,18 +54,13 @@ for deviceType in deviceTypes:
         mosyle_response = mosyle.list(deviceType).json()
     
     #print(mosyle_response)
-    if 'status' in mosyle_response:
-        if mosyle_response['status'] != "OK":
-            print('There was an issue with the Mosyle API. Stopping.', mosyle_response['message'])
-            exit();
+    if 'status' in mosyle_response and mosyle_response['status'] != "OK":
+        print('There was an issue with the Mosyle API. Stopping.', mosyle_response['message'])
+        exit();
     if 'status' in mosyle_response['response'][0]:
         print('There was an issue with the Mosyle API. Stopping script.')
         print(mosyle_response['response'][0]['info'])
         exit()
-
-    
-
-
 
     print('starting snipe')
 
@@ -122,7 +117,7 @@ for deviceType in deviceTypes:
         devicePayload = snipe.buildPayloadFromMosyle(sn);
         
         # If asset doesnt exist create and assign it
-        if asset['total'] == 0:
+        if "total" not in asset or asset['total'] == 0:
             asset = snipe.createAsset(model, devicePayload).json()
             if mosyle_user != None:
                 print('Assigning asset to SnipIT user based on Mosyle Assignment')
@@ -161,7 +156,7 @@ for deviceType in deviceTypes:
             print('update the mosyle asset tag of device ', sn['serial_number'], 'to ', asset['rows'][0]['asset_tag'])
             mosyle.setAssetTag(sn['serial_number'], asset['rows'][0]['asset_tag'])
         else:
-            print('Mosyle already has an assest tag of: ', sn['asset_tag'])
+            print('Mosyle already has an asset tag of: ', sn['asset_tag'])
     
     print('Finished with OS: ', deviceType)
     print('')
